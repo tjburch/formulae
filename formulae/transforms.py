@@ -364,6 +364,402 @@ class BSpline:
 
 
 @register_stateful_transform
+class NaturalCubicSpline:
+    """Natural Cubic Regression Spline (cr)
+
+    Generates a natural cubic spline basis for ``x``. Natural cubic splines have the
+    constraint that the second derivative is zero at the boundaries, which provides
+    more stable behavior for extrapolation.
+
+    The usual usage is something like::
+
+        y ~ 1 + cr(x, df=4)
+
+    to fit ``y`` as a smooth function of ``x``, with 4 degrees of freedom
+    given to the smooth.
+
+    Parameters
+    ----------
+    x: 1D array-like
+        The data.
+    df: int or None
+        The number of degrees of freedom to use for this spline. The return value will have this
+        many columns. You must specify at least one of ``df`` and ``knots``.
+    knots: 1D array-like or None
+        The interior knots to use for the spline. If unspecified, then equally spaced quantiles of
+        the input data are used. You must specify at least one of ``df`` and ``knots``.
+    lower_bound: float or None
+        The lower exterior knot location. Defaults to the minimum of ``x``.
+    upper_bound: float or None
+        The upper exterior knot location. Defaults to the maximum of ``x``.
+    constraints: str or None
+        Type of constraints. Currently only ``None`` is supported (natural spline constraints
+        are always applied).
+
+    Notes
+    -----
+    This is a stateful transform. Parameters computed from the first dataset (knots, bounds)
+    are stored and reused when evaluating new data.
+
+    Unlike mgcv's s() function, this provides only the basis matrix without automatic
+    smoothing penalty estimation.
+    """
+
+    __transform_name__ = "cr"
+
+    def __init__(self):
+        self.params_set = False
+        self._knots = None
+        self._lower_bound = None
+        self._upper_bound = None
+        self._df = None
+
+    def __call__(
+        self, x, df=None, knots=None, lower_bound=None, upper_bound=None, constraints=None
+    ):
+        if not self.params_set:
+            self._initialize(x, df, knots, lower_bound, upper_bound, constraints)
+        return self.eval(x)
+
+    def _initialize(self, x, df, knots, lower_bound, upper_bound, constraints):
+        if df is None and knots is None:
+            raise ValueError("Must specify either 'df' or 'knots'")
+
+        if df is not None and not isinstance(df, int):
+            raise ValueError("'df' must be either None or integer")
+
+        if df is not None and df < 1:
+            raise ValueError(f"'df' must be >= 1, not {df}")
+
+        if lower_bound is None:
+            lower_bound = np.min(x)
+
+        if upper_bound is None:
+            upper_bound = np.max(x)
+
+        if lower_bound > upper_bound:
+            raise ValueError(f"'lower_bound' > 'upper_bound' ({lower_bound} > {upper_bound})")
+
+        if df is not None:
+            # For natural cubic splines, df = number of output columns (without intercept)
+            # We need df + 1 total knots (2 boundary + df - 1 interior)
+            n_inner_knots = df - 1
+            if n_inner_knots < 0:
+                n_inner_knots = 0
+
+            if knots is not None:
+                if len(knots) != n_inner_knots:
+                    raise ValueError(
+                        f"df={df} implies {n_inner_knots} interior knots; "
+                        f"but {len(knots)} were provided"
+                    )
+            else:
+                if n_inner_knots > 0:
+                    knot_quantiles = np.linspace(0, 1, n_inner_knots + 2)[1:-1]
+                    knots = np.percentile(x, 100 * np.asarray(knot_quantiles))
+                else:
+                    knots = np.array([])
+            self._df = df
+        else:
+            # df not specified, compute from knots
+            knots = np.asarray(knots)
+            self._df = len(knots) + 1  # df = n_interior + 1
+
+        if knots is not None:
+            knots = np.asarray(knots)
+            if knots.ndim > 1:
+                raise ValueError("'knots' must be 1 dimensional")
+
+            if len(knots) > 0:
+                if np.any(knots < lower_bound):
+                    raise ValueError(
+                        f"Some knot values {knots[knots < lower_bound]} "
+                        f"fall below lower bound {lower_bound}"
+                    )
+
+                if np.any(knots > upper_bound):
+                    raise ValueError(
+                        f"Some knot values {knots[knots > upper_bound]} "
+                        f"fall above upper bound {upper_bound}"
+                    )
+
+        # All knots including boundaries
+        all_knots = np.concatenate([[lower_bound], knots, [upper_bound]])
+        all_knots.sort()
+
+        self._knots = all_knots
+        self._lower_bound = lower_bound
+        self._upper_bound = upper_bound
+        self.params_set = True
+
+    def eval(self, x):
+        """Evaluate the natural cubic spline basis at values x."""
+        knots = self._knots
+        n_knots = len(knots)
+
+        if n_knots < 2:
+            raise ValueError("Need at least 2 knots for natural cubic spline")
+
+        x = np.asarray(x).flatten()
+        n = len(x)
+
+        # Natural cubic spline basis construction using the ESL formulation
+        # For K knots, we get K basis functions: N_1(x) = 1, N_2(x) = x, N_{k+2}(x) = d_k - d_{K-1}
+        # We drop the intercept (N_1) to return K-1 columns
+
+        def d_func(x, k, knots):
+            """Compute d_k(x) for natural cubic spline basis."""
+            t_k = knots[k]
+            t_K = knots[-1]
+
+            term1 = np.maximum(x - t_k, 0) ** 3
+            term2 = np.maximum(x - t_K, 0) ** 3
+
+            denom = t_K - t_k
+            if denom == 0:
+                return np.zeros_like(x)
+            return (term1 - term2) / denom
+
+        # Basis without intercept: x, d_0 - d_{K-2}, d_1 - d_{K-2}, ..., d_{K-3} - d_{K-2}
+        # Total columns: 1 + (K-2) = K-1
+
+        basis = np.empty((n, n_knots - 1), dtype=float)
+        basis[:, 0] = x
+
+        if n_knots > 2:
+            d_Km1 = d_func(x, n_knots - 2, knots)
+            for k in range(n_knots - 2):
+                d_k = d_func(x, k, knots)
+                basis[:, k + 1] = d_k - d_Km1
+
+        return basis
+
+
+@register_stateful_transform
+class CyclicCubicSpline:
+    """Cyclic Cubic Regression Spline (cc)
+
+    Generates a cyclic cubic spline basis for ``x``. Cyclic splines enforce periodicity
+    by requiring that the function value and its first two derivatives match at the
+    boundaries.
+
+    The usual usage is something like::
+
+        y ~ 1 + cc(x, df=4)
+
+    to fit ``y`` as a smooth periodic function of ``x``, with 4 degrees of freedom
+    given to the smooth.
+
+    Parameters
+    ----------
+    x: 1D array-like
+        The data.
+    df: int or None
+        The number of degrees of freedom to use for this spline. The return value will have this
+        many columns. You must specify at least one of ``df`` and ``knots``.
+    knots: 1D array-like or None
+        The interior knots to use for the spline. If unspecified, then equally spaced quantiles of
+        the input data are used. You must specify at least one of ``df`` and ``knots``.
+    lower_bound: float or None
+        The lower exterior knot location (period start). Defaults to the minimum of ``x``.
+    upper_bound: float or None
+        The upper exterior knot location (period end). Defaults to the maximum of ``x``.
+    constraints: str or None
+        Type of constraints. Currently only ``None`` is supported.
+
+    Notes
+    -----
+    This is a stateful transform. Parameters computed from the first dataset (knots, bounds)
+    are stored and reused when evaluating new data.
+
+    Unlike mgcv's s() function, this provides only the basis matrix without automatic
+    smoothing penalty estimation.
+
+    The cyclic constraint ensures that f(lower_bound) = f(upper_bound) and that the
+    first two derivatives also match at these boundaries.
+    """
+
+    __transform_name__ = "cc"
+
+    def __init__(self):
+        self.params_set = False
+        self._knots = None
+        self._lower_bound = None
+        self._upper_bound = None
+        self._df = None
+
+    def __call__(
+        self, x, df=None, knots=None, lower_bound=None, upper_bound=None, constraints=None
+    ):
+        if not self.params_set:
+            self._initialize(x, df, knots, lower_bound, upper_bound, constraints)
+        return self.eval(x)
+
+    def _initialize(self, x, df, knots, lower_bound, upper_bound, constraints):
+        if df is None and knots is None:
+            raise ValueError("Must specify either 'df' or 'knots'")
+
+        if df is not None and not isinstance(df, int):
+            raise ValueError("'df' must be either None or integer")
+
+        if df is not None and df < 1:
+            raise ValueError(f"'df' must be >= 1, not {df}")
+
+        if lower_bound is None:
+            lower_bound = np.min(x)
+
+        if upper_bound is None:
+            upper_bound = np.max(x)
+
+        if lower_bound > upper_bound:
+            raise ValueError(f"'lower_bound' > 'upper_bound' ({lower_bound} > {upper_bound})")
+
+        if lower_bound == upper_bound:
+            raise ValueError("'lower_bound' cannot equal 'upper_bound' for cyclic splines")
+
+        if df is not None:
+            # For cyclic cubic splines, df = number of output columns
+            # We use df knots total (including boundaries), so df - 2 interior knots
+            n_inner_knots = df
+
+            if knots is not None:
+                if len(knots) != n_inner_knots:
+                    raise ValueError(
+                        f"df={df} implies {n_inner_knots} interior knots; "
+                        f"but {len(knots)} were provided"
+                    )
+            else:
+                # Place knots at equally spaced quantiles
+                if n_inner_knots > 0:
+                    knot_quantiles = np.linspace(0, 1, n_inner_knots + 2)[1:-1]
+                    knots = np.percentile(x, 100 * np.asarray(knot_quantiles))
+                else:
+                    knots = np.array([])
+            self._df = df
+        else:
+            knots = np.asarray(knots)
+            self._df = len(knots)
+
+        if knots is not None:
+            knots = np.asarray(knots)
+            if knots.ndim > 1:
+                raise ValueError("'knots' must be 1 dimensional")
+
+            if len(knots) > 0:
+                if np.any(knots <= lower_bound):
+                    raise ValueError(
+                        f"Some knot values {knots[knots <= lower_bound]} "
+                        f"fall at or below lower bound {lower_bound}"
+                    )
+
+                if np.any(knots >= upper_bound):
+                    raise ValueError(
+                        f"Some knot values {knots[knots >= upper_bound]} "
+                        f"fall at or above upper bound {upper_bound}"
+                    )
+
+        # All knots including boundaries for cyclic spline
+        all_knots = np.concatenate([[lower_bound], knots, [upper_bound]])
+        all_knots.sort()
+
+        self._knots = all_knots
+        self._lower_bound = lower_bound
+        self._upper_bound = upper_bound
+        self.params_set = True
+
+    def eval(self, x):
+        """Evaluate the cyclic cubic spline basis at values x."""
+        knots = self._knots
+        df = self._df
+
+        if df < 1:
+            raise ValueError("Need at least df=1 for cyclic cubic spline")
+
+        x = np.asarray(x).flatten()
+        n = len(x)
+
+        # Period
+        period = self._upper_bound - self._lower_bound
+
+        # Wrap x to the period [lower_bound, upper_bound)
+        x_wrapped = self._lower_bound + np.mod(x - self._lower_bound, period)
+
+        # Build cyclic cubic spline basis using cyclic B-splines
+        # For a cyclic spline with K knots (including endpoints), we have K-1 basis functions
+        # But due to periodicity, we treat the boundary knots as coincident
+
+        # Create extended knot sequence for periodic B-splines
+        n_knots = len(knots)
+        all_knots = np.array(knots)
+
+        # For cyclic B-splines, we extend the knot sequence periodically
+        extended_knots = np.concatenate([
+            all_knots[:-1] - period,
+            all_knots,
+            all_knots[1:] + period
+        ])
+
+        # Compute B-spline basis of degree 3
+        degree = 3
+        basis = np.zeros((n, df), dtype=float)
+
+        # The cyclic basis has df functions, corresponding to df interior knots
+        for j in range(df):
+            # Index in the extended knot sequence
+            # Interior knot j is at position j+1 in all_knots
+            # In extended_knots, it's at position (n_knots - 1) + (j + 1)
+            idx = (n_knots - 1) + (j + 1) - degree
+            basis[:, j] = self._eval_bspline_basis(x_wrapped, extended_knots, idx, degree)
+
+        return basis
+
+    def _eval_bspline_basis(self, x, knots, i, degree):
+        """Evaluate B-spline basis function B_{i,degree} using de Boor's recursion."""
+        n = len(x)
+        result = np.zeros(n, dtype=float)
+
+        # Use iterative de Boor algorithm for better numerical stability
+        # Start with degree 0 B-splines
+        basis_prev = {}
+
+        for k in range(i, i + degree + 2):
+            if k + 1 < len(knots):
+                basis_prev[k] = np.where(
+                    (x >= knots[k]) & (x < knots[k + 1]),
+                    1.0,
+                    0.0
+                ).astype(float)
+            else:
+                basis_prev[k] = np.zeros(n, dtype=float)
+
+        # Build up to desired degree
+        for d in range(1, degree + 1):
+            basis_curr = {}
+            for k in range(i, i + degree + 1 - d + 1):
+                left = np.zeros(n, dtype=float)
+                right = np.zeros(n, dtype=float)
+
+                if k + d < len(knots):
+                    denom_left = knots[k + d] - knots[k]
+                    if denom_left > 0 and k in basis_prev:
+                        left = (x - knots[k]) / denom_left * basis_prev[k]
+
+                if k + d + 1 < len(knots):
+                    denom_right = knots[k + d + 1] - knots[k + 1]
+                    if denom_right > 0 and (k + 1) in basis_prev:
+                        right = (knots[k + d + 1] - x) / denom_right * basis_prev[k + 1]
+
+                basis_curr[k] = left + right
+
+            basis_prev = basis_curr
+
+        if i in basis_prev:
+            result = basis_prev[i]
+
+        return result
+
+
+@register_stateful_transform
 class Polynomial:
     """Polynomial transformation
 
