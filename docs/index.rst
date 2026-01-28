@@ -104,6 +104,7 @@ Contents
    :maxdepth: 4
 
    notebooks/getting_started
+   notebooks/spline_comparison
    api_reference
    internals
 
