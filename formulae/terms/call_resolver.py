@@ -268,6 +268,19 @@ class LazyCall:
         return callee(*args, **kwargs)
 
 
+class LazyList(LazyCall):
+    """A list whose elements use the enclosing call's evaluation rules."""
+
+    def __init__(self, items):
+        super().__init__("list", items, {})
+
+    def __str__(self):
+        return "[" + ", ".join(str(item) for item in self.args) + "]"
+
+    def eval(self, data_mask, env):
+        return [item.eval(data_mask, env) for item in self.args]
+
+
 class CallResolver:
     """Visitor that walks an AST representing a regular call and returns a lazy version of it."""
 
@@ -295,6 +308,9 @@ class CallResolver:
 
     def visitGroupingExpr(self, expr):
         return expr.expression.accept(self)
+
+    def visitListExpr(self, expr):
+        return LazyList([item.accept(self) for item in expr.items])
 
     def visitBinaryExpr(self, expr):
         otype = expr.operator.kind

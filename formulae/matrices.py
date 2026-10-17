@@ -482,7 +482,9 @@ class GroupEffectsMatrix:
         return msg
 
 
-def design_matrices(formula, data, na_action="drop", env=0, extra_namespace=None):
+def design_matrices(
+    formula, data, na_action="drop", env=0, extra_namespace=None, formula_wrappers=None
+):
     """Parse and materialize a model formula into a `DesignMatrices`.
 
     A `DesignMatrices` object contains objects representing the response and
@@ -505,6 +507,9 @@ def design_matrices(formula, data, na_action="drop", env=0, extra_namespace=None
     extra_namespace : dict
         Additional user supplied transformations to include in the environment where the formula
         is evaluated. Defaults to `None`.
+    formula_wrappers : dict, optional
+        Wrapper names mapped to ``"coordinate"`` or ``"coefficient"``. See
+        ``model_description`` for the registered formula-expression interface.
 
     Returns
     -------
@@ -533,7 +538,7 @@ def design_matrices(formula, data, na_action="drop", env=0, extra_namespace=None
     env = Environment.capture(env, reference=1)
     env = env.with_outer_namespace(extra_namespace)
 
-    description = model_description(formula)
+    description = model_description(formula, formula_wrappers=formula_wrappers)
 
     # Incomplete rows are calculated using columns involved in model formula only
     cols_to_select = description.var_names.intersection(set(data.columns))
@@ -559,6 +564,8 @@ def design_matrices(formula, data, na_action="drop", env=0, extra_namespace=None
         else:
             raise ValueError(f"'data' contains {incomplete_rows_n} incomplete rows.")
 
+    if len(data.index) == 0:
+        raise ValueError("'data' does not contain any observation after removing missing values.")
     design = DesignMatrices(description, data, env)
     return design
 
@@ -586,6 +593,8 @@ def wrapify(string: str, width: int = 100):
 
 
 def slice_to_column(s: slice):
+    if s.stop == s.start:
+        return "columns: none"
     if s.stop - s.start > 1:
         return f"columns: {s.start}:{s.stop}"
     else:

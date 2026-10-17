@@ -118,8 +118,11 @@ class CategoricalBox:
 
     @levels.setter
     def levels(self, value):
-        if value is not None and set(value) != set(self.data):  # pragma: no cover
-            raise ValueError("The levels beign assigned and the levels in the data differ")
+        if value is not None:
+            if len(set(value)) != len(value):
+                raise ValueError("Declared categorical levels must be unique.")
+            if not set(self.data).issubset(set(value)):
+                raise ValueError("Declared categorical levels must contain every observed value.")
         self._levels = value
 
 

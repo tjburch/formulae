@@ -1,6 +1,6 @@
 # inconsistently raises this problem
 # pylint: disable=relative-beyond-top-level
-from .expr import Assign, Grouping, Binary, Unary, Call, Variable, QuotedName, Literal
+from .expr import Assign, Grouping, Binary, Unary, Call, Variable, QuotedName, Literal, ListExpr
 from .token import Token
 from .utils import listify
 
@@ -172,7 +172,16 @@ class Parser:  # pylint: disable=too-many-public-methods
         return expr
 
     def primary(self):  # pylint: disable=too-many-return-statements
-        if self.match("IDENTIFIER"):
+        if self.match("LEFT_BRACKET"):
+            items = []
+            if not self.check("RIGHT_BRACKET"):
+                while True:
+                    items.append(self.expression())
+                    if not self.match("COMMA"):
+                        break
+            self.consume("RIGHT_BRACKET", "Expect ']' after list.")
+            return ListExpr(items)
+        elif self.match("IDENTIFIER"):
             identifier = self.previous()
             if self.match("LEFT_BRACKET"):
                 level = self.primary()

@@ -22,6 +22,8 @@ website:
     right:
       - text: Getting Started
         href: notebooks/getting_started.ipynb
+      - text: Formula Wrappers
+        href: formula_wrappers.qmd
       - text: API Reference
         href: api/index.html
       - text: Changelog

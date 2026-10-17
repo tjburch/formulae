@@ -4,7 +4,13 @@
 
 ### New features
 
+- Add opt-in coordinate and coefficient formula wrappers, with bar and `by=` forms,
+  composite grouping lists, fitted design metadata, and standard nesting expansion.
+
 ### Maintenance and fixes
+
+- Preserve declared but unobserved categorical levels and reject duplicate declarations.
+- Read quoted strings with their matching opening delimiter.
 
 ### Documentation
 
