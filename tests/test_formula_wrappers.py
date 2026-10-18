@@ -37,12 +37,12 @@ def structured(formula, data):
 
 @pytest.mark.parametrize("wrapper", WRAPPERS)
 @pytest.mark.parametrize("group", ["g", '"g"', "[g, h]", '["g", "h"]'])
-def test_equivalent_forms(data, wrapper, group):
+def test_grouping_forms(data, wrapper, group):
     coordinate = WRAPPERS[wrapper] == "coordinate"
-    inner = "0 + x" if coordinate else "1 + x"
+    inner = "x" if coordinate else "1 + x"
     factor = "g:h" if "[" in group else "g"
-    left = structured(f"{wrapper}({inner} | {factor})", data)[0]
-    right = structured(f'{wrapper}({"x" if coordinate else inner}, by={group})', data)[0]
+    left = structured(f"{wrapper}({inner}, by={factor})", data)[0]
+    right = structured(f"{wrapper}({inner}, by={group})", data)[0]
     assert left.name == right.name
     assert left.var_names == right.var_names
     pd.testing.assert_frame_equal(left.group_values, right.group_values)
@@ -71,9 +71,9 @@ def test_declared_levels_and_list_options(data):
 
 
 def test_nesting_duplicates_and_discovery(data):
-    terms = structured("ar1(0 + x | g/h/`odd name`)", data)
+    terms = structured("ar1(x, by=g/h/`odd name`)", data)
     assert [t.groups for t in terms] == [("g",), ("g", "h"), ("g", "h", "odd name")]
-    terms = structured("ar1(x, by=g) + ar1(0 + x | g)", data)
+    terms = structured('ar1(x, by=g) + ar1(x, by="g")', data)
     assert len(terms) == 1
     description = model_description('y ~ ar1(x, by=["g", "odd name"])', formula_wrappers=WRAPPERS)
     assert description.var_names == {"y", "x", "g", "odd name"}
@@ -94,18 +94,24 @@ def test_group_columns_missing_values(data):
 @pytest.mark.parametrize(
     "formula, message",
     [
-        ("ar1(x | g)", "coordinate"),
-        ("ar1(1 + x | g)", "coordinate"),
-        ("us(x | g, by=h)", "both"),
+        ("ar1(1 + x, by=g)", "coordinate"),
         ("us(x, by=[])", "empty"),
         ("us(x, by=g, by=h)", "Duplicate"),
         ("us(x, x, by=g)", "exactly one"),
+        ("ar1(x, g)", "exactly one"),
         ("us(x, option=x)", "literal"),
     ],
 )
 def test_useful_errors(data, formula, message):
     with pytest.raises(ValueError, match=message):
         structured(formula, data)
+
+
+@pytest.mark.parametrize("wrapper", WRAPPERS)
+@pytest.mark.parametrize("options", ["", ", by=h"])
+def test_inner_group_terms_are_rejected(data, wrapper, options):
+    with pytest.raises(ValueError, match="Use 'by='"):
+        structured(f"{wrapper}(0 + x | g{options})", data)
 
 
 def test_ordinary_arithmetic_namespace_and_groups(data):
@@ -124,6 +130,44 @@ def test_group_name_cannot_collide_with_composite(data):
     terms = structured(f'ar1(x, by=[g,h]) + ar1(x, by=["{column}"])', data)
     assert len(terms) == 2
     assert terms[0].name != terms[1].name
+
+
+@pytest.mark.parametrize("column", ["True", "False", "None"])
+def test_group_name_matching_python_literal_round_trips(data, column):
+    data[column] = data.g
+    term = structured(f'ar1(x, by="{column}")', data)[0]
+    restored = structured(term.name, data)[0]
+    assert restored.name == term.name
+    assert restored.groups == (column,)
+    pd.testing.assert_frame_equal(restored.group_values, term.group_values)
+
+
+@pytest.mark.parametrize("expression", ["x + z", "x:z", "center(x)"])
+def test_quoted_predictor_cannot_collide_with_formula(data, expression):
+    data["z"] = data.x**2
+    data[expression] = data.x**3
+    terms = structured(f"us(`{expression}`, by=g) + us({expression}, by=g)", data)
+    assert len(terms) == 2
+    assert terms[0].name != terms[1].name
+    for term, inner in zip(terms, [f"`{expression}`", expression]):
+        reference = design_matrices(inner, data)
+        np.testing.assert_array_equal(term.design.design_matrix, reference.common.design_matrix)
+        assert structured(term.name, data)[0].name == term.name
+
+
+@pytest.mark.parametrize(
+    "left,right", [("center(`x + z`)", "center(x + z)"), ("I(x * (z + x))", "I(x * z + x)")]
+)
+def test_transform_identity_preserves_quoted_names_and_grouping(data, left, right):
+    data["z"] = data.x**2
+    data["x + z"] = data.x**3
+    terms = structured(f"us({left}, by=g) + us({right}, by=g)", data)
+    assert len(terms) == 2
+    assert terms[0].name != terms[1].name
+    for term, inner in zip(terms, [left, right]):
+        reference = design_matrices(inner, data)
+        np.testing.assert_array_equal(term.design.design_matrix, reference.common.design_matrix)
+        assert structured(term.name, data)[0].name == term.name
 
 
 @pytest.mark.parametrize("operator", ["*", ":", "/", "**"])

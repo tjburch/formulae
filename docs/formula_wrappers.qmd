@@ -9,15 +9,15 @@ from formulae import design_matrices
 
 wrappers = {'process': 'coordinate', 'coefficients': 'coefficient'}
 design = design_matrices(
-    'y ~ x + process(0 + time | team/player) + coefficients(x, by=player)',
+    'y ~ x + process(time, by=team/player) + coefficients(x, by=player)',
     data,
     formula_wrappers=wrappers,
 )
 ```
 
-Only registered calls interpret their first argument as a formula. Ordinary calls still evaluate arguments as Python-like arithmetic, including namespace lookup and stateful transformations. The enclosing model still has its usual intercept. A registered coefficient wrapper adds the ordinary implicit intercept inside its design. A coordinate wrapper uses one raw coordinate and requires an explicit zero intercept in bar syntax.
+Only registered calls interpret their first argument as a formula. Ordinary calls still evaluate arguments as Python-like arithmetic, including namespace lookup and stateful transformations. The enclosing model still has its usual intercept. A registered coefficient wrapper adds the ordinary implicit intercept inside its design. A coordinate wrapper uses one raw coordinate without an implicit intercept.
 
-Both `process(time, by=player)` and `process(0 + time | player)` resolve to the same term. Grouping accepts bare names, quoted names, and lists of bare or quoted names. Lists form a single composite grouping. `:` forms an interaction key; `/` uses ordinary recursive nesting expansion, creating one wrapper term per expanded group. An inner bar and `by` cannot be combined. Outer interactions of structured wrappers are rejected; add them to the model instead.
+Grouping accepts bare names, quoted names, and lists of bare or quoted names. Lists form a single composite grouping. `:` forms an interaction key; `/` uses ordinary recursive nesting expansion, creating one wrapper term per expanded group. Grouping uses the `by=` keyword; a second positional grouping argument and inner group-specific terms are unsupported. Ordinary group terms such as `(1 + x | group)` remain supported outside registered wrappers. Outer interactions of structured wrappers are rejected; add them to the model instead.
 
 `StructuredTerm` objects appear in `design.common.terms` with `kind="structured"`. They occupy zero ordinary common-design columns. Each object exposes:
 
@@ -30,4 +30,4 @@ Both `process(time, by=player)` and `process(0 + time | player)` resolve to the 
 
 `evaluate_new_data(data)` returns the coordinate values or fitted coefficient design, together with grouping columns. It reuses fitted stateful transforms and contrast choices. Every grouping column, including quoted names, contributes to variable discovery and missing-data handling. Structured designs retain declared categorical domains, including unobserved categories. Observed categories must occur in the declarations and declared levels must be unique.
 
-Options other than `by` are literal metadata for the consuming library. Formulae does not define probability distributions or covariance algorithms. Equivalent forms have one canonical identity and follow Formulae's additive duplicate removal. A single unusual column name is represented as a one-item quoted list so it cannot collide with a composite key.
+Options other than `by` are literal metadata for the consuming library. Formulae does not define probability distributions or covariance algorithms. Equivalent supported grouping spellings have one canonical identity and follow Formulae's additive duplicate removal. A single unusual column name is represented as a one-item quoted list so it cannot collide with a composite key.

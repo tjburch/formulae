@@ -13,9 +13,46 @@ from formulae import expr as ast
 from formulae.categorical import ENCODINGS
 from formulae.environment import Environment
 from formulae.token import Token
+from formulae.terms.call_resolver import LazyCall, LazyList, LazyOperator, LazyVariable
 from formulae.terms.terms import Term, Model, Intercept
 from formulae.terms.variable import Variable
 from formulae.transforms import TRANSFORMS
+
+_LITERAL_NAMES = {"True", "False", "None"}
+
+
+def _variable_name(name):
+    return name if name.isidentifier() and name not in _LITERAL_NAMES else f"`{name}`"
+
+
+def _call_name(value):
+    if isinstance(value, LazyVariable):
+        return _variable_name(value.name)
+    if isinstance(value, LazyList):
+        return "[" + ", ".join(_call_name(item) for item in value.args) + "]"
+    if isinstance(value, LazyOperator):
+        args = [_call_name(item) for item in value.args]
+        if len(args) == 1:
+            return f"({value.symbol}{args[0]})"
+        return f"({args[0]} {value.symbol} {args[1]})"
+    if isinstance(value, LazyCall):
+        args = [_call_name(item) for item in value.args]
+        args.extend(f"{key}={_call_name(item)}" for key, item in value.kwargs.items())
+        return f"{value.callee}({', '.join(args)})"
+    return str(value)
+
+
+def _term_name(term):
+    if isinstance(term, Intercept):
+        return "1"
+    return ":".join(
+        (
+            _variable_name(component.name)
+            if isinstance(component, Variable)
+            else _call_name(component.call)
+        )
+        for component in term.components
+    )
 
 
 class StructuredTerm(Term):  # pylint: disable=too-many-instance-attributes
@@ -39,13 +76,15 @@ class StructuredTerm(Term):  # pylint: disable=too-many-instance-attributes
         self.coordinate = None
         self.group_values = None
         self.env = None
-        names = ["1" if isinstance(t, Intercept) else t.name for t in inner.common_terms]
+        names = [_term_name(term) for term in inner.common_terms]
         if mode == "coefficient" and "1" not in names:
             names.insert(0, "0")
         args = [" + ".join(names)]
         if groups:
             group = (
-                groups[0] if len(groups) == 1 and groups[0].isidentifier() else repr(list(groups))
+                groups[0]
+                if len(groups) == 1 and groups[0].isidentifier() and groups[0] not in _LITERAL_NAMES
+                else repr(list(groups))
             )
             args.append(f"by={group}")
         args.extend(f"{key}={value!r}" for key, value in sorted(options.items()))
@@ -171,24 +210,20 @@ def resolve_wrapper(expression, resolver, mode):
     if len(positional) != 1:
         raise ValueError("A formula wrapper requires exactly one formula expression.")
     inner_expression = _unwrap(positional[0])
-    has_bar = isinstance(inner_expression, ast.Binary) and inner_expression.operator.kind == "PIPE"
-    if has_bar:
-        if by is not None:
-            raise ValueError("Do not supply both an inner bar and 'by'.")
-        by = inner_expression.right
-        inner_expression = inner_expression.left
-    if mode == "coefficient" or has_bar:
+    if mode == "coefficient":
         inner_expression = _with_intercept(inner_expression)
     inner = inner_expression.accept(resolver)
     inner = inner if isinstance(inner, Model) else Model(inner)
-    if inner.group_terms or any(isinstance(t, StructuredTerm) for t in inner.common_terms):
-        raise ValueError("Nested wrappers and inner group effects are not supported.")
+    if inner.group_terms:
+        raise ValueError(
+            "Use 'by=' for grouping a formula wrapper; inner group effects are unsupported."
+        )
+    if any(isinstance(t, StructuredTerm) for t in inner.common_terms):
+        raise ValueError("Nested formula wrappers are not supported.")
     if mode == "coordinate":
         terms = inner.common_terms
         if len(terms) != 1 or not isinstance(terms[0], Term) or len(terms[0].components) != 1:
-            raise ValueError(
-                "A coordinate wrapper requires one coordinate; bar syntax requires '0 +'."
-            )
+            raise ValueError("A coordinate wrapper requires one coordinate.")
     elif not inner.common_terms:
         raise ValueError("The coefficient design cannot be empty.")
     factors = [None]
