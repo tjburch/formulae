@@ -1,3 +1,16 @@
+class ListExpr:
+    """A list of expressions, interpreted by the enclosing call."""
+
+    def __init__(self, items):
+        self.items = items
+
+    def __eq__(self, other):
+        return isinstance(other, type(self)) and self.items == other.items
+
+    def accept(self, visitor):
+        return visitor.visitListExpr(self)
+
+
 class Assign:
     """Expr for Asssignments.
 

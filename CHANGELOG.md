@@ -4,7 +4,15 @@
 
 ### New features
 
+- Add opt-in coordinate and coefficient formula wrappers, with `by=` grouping,
+  composite grouping lists, fitted design metadata, and standard nesting expansion.
+
 ### Maintenance and fixes
+
+- Keep structured canonical names distinct for quoted predictors and Python-literal grouping names.
+
+- Preserve declared but unobserved categorical levels and reject duplicate declarations.
+- Read quoted strings with their matching opening delimiter.
 
 ### Documentation
 

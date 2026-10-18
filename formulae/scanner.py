@@ -201,8 +201,13 @@ class Scanner:
             self.add_token("IDENTIFIER")
 
     def char(self):
-        while self.peek() not in ["'", '"'] and not self.at_end():
-            self.advance()
+        quote = self.code[self.start]
+        value = []
+        while self.peek() != quote and not self.at_end():
+            char = self.advance()
+            if char == "\\" and self.peek() in (quote, "\\"):
+                char = self.advance()
+            value.append(char)
 
         if self.at_end():
             raise ScanError("Unterminated string.")
@@ -210,9 +215,7 @@ class Scanner:
         # The closing quotation mark.
         self.advance()
 
-        # Trim the surrounding quotes.
-        value = self.code[self.start + 1 : self.current - 1]
-        self.add_token("STRING", value)
+        self.add_token("STRING", "".join(value))
 
     def backquote(self):
         while True:
