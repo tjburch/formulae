@@ -22,8 +22,6 @@
 
 ### Maintenance and fixes
 
-- Keep structured canonical names distinct for quoted predictors and Python-literal grouping names.
-
 - Reject interactions involving `hsgp()`, `bs()`, `cr()`, `cc()`, or `tp()` (#129).
 
 ## 0.8.0
@@ -37,8 +35,6 @@
   for large datasets (#127).
 
 ### Maintenance and fixes
-
-- Keep structured canonical names distinct for quoted predictors and Python-literal grouping names.
 
 - Add Python 3.14 to the CI test matrix (#127).
 
@@ -65,8 +61,6 @@
 
 ### Maintenance and fixes
 
-- Keep structured canonical names distinct for quoted predictors and Python-literal grouping names.
-
 ### Documentation
 
 ### Deprecation
@@ -75,16 +69,12 @@
 
 ### Maintenance and fixes
 
-- Keep structured canonical names distinct for quoted predictors and Python-literal grouping names.
-
 - Update versions (#122)
 - Extend equality methods (#123)
 
 ## 0.6.1
 
 ### Maintenance and fixes
-
-- Keep structured canonical names distinct for quoted predictors and Python-literal grouping names.
 
 - Remove `sparse` dependency (#121)
 
@@ -101,8 +91,6 @@
 
 ### Maintenance and fixes
 
-- Keep structured canonical names distinct for quoted predictors and Python-literal grouping names.
-
 - Fix pandas version check (#110)
 - Test on Python 3.10, 3.11, and 3.12 (#113)
 - Migrate development tooling and workflow to pixi (#116)
@@ -115,23 +103,17 @@
 
 ### Maintenance and fixes
 
-- Keep structured canonical names distinct for quoted predictors and Python-literal grouping names.
-
 - Make sure model_description always returns a Model instance (#112)
 
 ## 0.5.3
 
 ### Maintenance and fixes
 
-- Keep structured canonical names distinct for quoted predictors and Python-literal grouping names.
-
 - Make formulae reach transformations before outer names (#109)
 
 ## 0.5.2
 
 ### Maintenance and fixes
-
-- Keep structured canonical names distinct for quoted predictors and Python-literal grouping names.
 
 - Update is_categorical_dtype for pandas >= 2.10 (#105)
 - Add automatic versioning to the library (#106)
@@ -140,8 +122,6 @@
 ## 0.5.1
 
 ### Maintenance and fixes
-
-- Keep structured canonical names distinct for quoted predictors and Python-literal grouping names.
 
 - Fix bug when intercept is inserted after categorical variable (#102)
 
@@ -154,8 +134,6 @@
 - Return ready to be used group-specific effects design matrix when there are new groups (#100)
 
 ### Maintenance and fixes
-
-- Keep structured canonical names distinct for quoted predictors and Python-literal grouping names.
 
 - Fix typo in __str__ (#99)
 
@@ -170,8 +148,6 @@
 - Implement a @register_stateful_transform decorator to register new stateful transformations (#85)
 
 ### Maintenance and fixes
-
-- Keep structured canonical names distinct for quoted predictors and Python-literal grouping names.
 
 - Fix evaluation of new offset terms with call arguments (#81)
 - Multiple calls with unnamed attributes resulted in errors due to trying to hash unhashable types (#88)
@@ -188,15 +164,11 @@
 
 ### Maintenance and fixes
 
-- Keep structured canonical names distinct for quoted predictors and Python-literal grouping names.
-
 - Fixed a bug in the levels of interaction terms involving numeric terms with multiple columns (b4a1f73)
 
 ## v0.3.3
 
 ### Maintenance and fixes
-
-- Keep structured canonical names distinct for quoted predictors and Python-literal grouping names.
 
 - Fixed a bug in `CategoricalBox`. Now it considers the order of the categories if `data` is ordered and `levels` is `None` (#73)
 
@@ -204,15 +176,11 @@
 
 ### Maintenance and fixes
 
-- Keep structured canonical names distinct for quoted predictors and Python-literal grouping names.
-
 - Fixed a bug in `CategoricalBox` because it failed to convert categorical series to numpy arrays. Now it works. (#72)
 
 ## v0.3.1
 
 ### Maintenance and fixes
-
-- Keep structured canonical names distinct for quoted predictors and Python-literal grouping names.
 
 - Renamed `ResponseVector` to `ResponseMatrix` (#71)
 - Renamed `design_vector` to `design_matrix` in `ResponseMatrix`(#71)
@@ -234,8 +202,6 @@
 - `design_matrices()` gains a new argument `extra_namespace`. It allows us to pass a dictionary of transformations that are made available in the environment where the formula is evaluated (#70)
 
 ### Maintenance and fixes
-
-- Keep structured canonical names distinct for quoted predictors and Python-literal grouping names.
 
 - Fixed a bug in the addition of lower order terms when the original higher order term wasn't full-rank.
 - Columns for categorical terms are integer by default. They are casted to float only if there are other float-valued columns in the design matrix.
@@ -272,8 +238,6 @@
 
 ### Maintenance and fixes
 
-- Keep structured canonical names distinct for quoted predictors and Python-literal grouping names.
-
 - Fix group-specific effects matrix shape (#35)
 
 ### Documentation
@@ -287,8 +251,6 @@
 - Factor of group specific effect can be an interaction now (#31)
 
 ### Maintenance and fixes
-
-- Keep structured canonical names distinct for quoted predictors and Python-literal grouping names.
 
 - Full interaction does not result in shared components anymore (#30)
 - Add information about levels to interaction terms (#33)
@@ -304,8 +266,6 @@
 ### New features
 
 ### Maintenance and fixes
-
-- Keep structured canonical names distinct for quoted predictors and Python-literal grouping names.
 
 - Nested stateful transofrmations now work as expected (#19)
 
